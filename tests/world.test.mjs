@@ -74,7 +74,7 @@ test('watch UI smoke: scene starts, back pauses, menu and EXIT terminate',()=>{
  const embedded=source.replace(/^export /gm,'');
  assert.ok(ux.includes(embedded),'The installed inline Vela world engine must match tested source');
  assert.ok(ux.includes('class="exit-mini" @click="exitGame"'),'EXIT must be accessible while playing');
- const script=ux.match(/<script>([\\s\\S]*?)<\\/script>/)[1]
+ const script=ux.split('<script>')[1].split('</script>')[0]
    .replace(/^import storage.*$/gm,'')
    .replace(/^import app.*$/gm,'')
    .replace('export default','return');
