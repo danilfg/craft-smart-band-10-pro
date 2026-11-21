@@ -182,32 +182,35 @@ export function restore(raw) {
 }
 // Limit the watch to 25 image nodes per scene instead of 81. Rendering
 // the old 9x9 world on the low-memory Band 10 Pro could blank the screen.
+// Fixed 3x3 visibility window: at most nine voxel textures decoded on watch.
+// The full procedural world remains infinite; only the nearby cells are drawn.
 export function renderTiles(s) {
-  const out=[],radius=2;
-  for(let layer=-radius*2;layer<=radius*2;layer++) {
-    for(let dx=-radius;dx<=radius;dx++) {
+  const out=[];
+  const radius=1;
+  for(let layer=-2;layer<=2;layer++) {
+    for(let dx=-1;dx<=1;dx++) {
       const dy=layer-dx;
-      if(dy < -radius || dy > radius)continue;
+      if(dy < -1 || dy > 1)continue;
       const c=cell(s,s.x+dx,s.y+dy);
-      const px=Math.round(168+(dx-dy)*30-32);
-      const py=Math.round(155+(dx+dy)*15-c.h*9);
       out.push({
-        id:(dx+radius)*5+(dy+radius),
         image:'/common/blocks/'+c.type+'_'+c.h+'.png',
-        x:px,y:py,type:c.type,spriteHeight:33+c.h*9
+        x:Math.round(168+(dx-dy)*38-32),
+        y:Math.round(145+(dx+dy)*18-c.h*9),
+        h:33+c.h*9
       });
     }
   }
-  const front=facing(s),fx=front.x-s.x,fy=front.y-s.y;
-  const center=cell(s,s.x,s.y);
-  const mobs=s.enemies.filter(m=>Math.abs(m.x-s.x)<=2&&Math.abs(m.y-s.y)<=2).map((m,i)=>({
-    id:i,x:Math.round(168+((m.x-s.x)-(m.y-s.y))*30-17),
-    y:Math.round(155+((m.x-s.x)+(m.y-s.y))*15-cell(s,m.x,m.y).h*9-25)
-  }));
+  const center=cell(s,s.x,s.y),front=facing(s);
+  const fx=front.x-s.x, fy=front.y-s.y;
+  const mobs=s.enemies.filter(m=>Math.abs(m.x-s.x)<=1&&Math.abs(m.y-s.y)<=1);
+  const mob=mobs.length?mobs[0]:null;
   return {
-    blocks:out,mobs,playerY:Math.round(145-center.h*9),
-    targetX:Math.round(168+(fx-fy)*30-21),
-    targetY:Math.round(160+(fx+fy)*15-cell(s,front.x,front.y).h*9),
-    biome:center.biome
+    blocks:out, biome:center.biome,
+    playerY:Math.round(133-center.h*9),
+    targetX:Math.round(168+(fx-fy)*38-24),
+    targetY:Math.round(154+(fx+fy)*18-cell(s,front.x,front.y).h*9),
+    mobVisible:!!mob,
+    mobX:mob?Math.round(168+((mob.x-s.x)-(mob.y-s.y))*38-17):0,
+    mobY:mob?Math.round(133+((mob.x-s.x)+(mob.y-s.y))*18-cell(s,mob.x,mob.y).h*9):0
   };
 }
