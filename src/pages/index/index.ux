@@ -4,7 +4,7 @@
 
     <!-- Depth-sorted visible voxel columns: only top and exterior faces exist in each sprite. -->
     <stack if="{{screen === 'play'}}" class="world">
-      <image class="voxel" for="{{blocks}}" tid="id" src="{{$item.image}}" style="left: {{$item.x}}px; top: {{$item.y}}px;"></image>
+      <image class="voxel" for="{{blocks}}" tid="id" src="{{$item.image}}" style="left: {{$item.x}}px; top: {{$item.y}}px; height: {{$item.spriteHeight}}px;"></image>
       <image class="target" src="/common/cursor.png" style="left: {{targetX}}px; top: {{targetY}}px;"></image>
       <image class="mob" for="{{mobs}}" tid="id" src="/common/zombie.png" style="left: {{$item.x}}px; top: {{$item.y}}px;"></image>
       <image class="player" src="/common/player.png" style="top: {{playerY}}px;"></image>
@@ -324,7 +324,7 @@ export default {
 .screen { width:336px; height:480px; background-color:#183350; overflow:hidden; }
 .sky { position:absolute; left:0px; top:59px; width:336px; height:287px; }
 .world { position:absolute; top:61px; left:0px; width:336px; height:285px; overflow:hidden; }
-.voxel { position:absolute; width:64px; height:105px; }
+.voxel { position:absolute; width:64px; }
 .player { position:absolute; left:146px; width:44px; height:60px; }
 .mob { position:absolute; width:44px; height:60px; }
 .target { position:absolute; width:64px; height:40px; }
@@ -356,10 +356,10 @@ export default {
 .action-text { color:#ffffff; font-size:17px; font-weight:bold; }
 .panel { position:absolute; left:10px; top:16px; width:316px; height:448px; border:2px solid #6bc1b2; border-radius:23px; align-items:center; flex-direction:column; background-color:rgba(17,37,57,.97); }
 .menu { top:17px; }
-.menu-logo { margin-top:14px; width:95px; height:95px; }
-.title { color:#ffde8a; font-size:30px; font-weight:bold; text-align:center; margin-top:7px; }
-.subtitle { color:#c6e6eb; font-size:11px; font-weight:bold; text-align:center; margin-top:4px; margin-bottom:13px; }
-.btn { width:257px; height:49px; border-radius:15px; margin-top:9px; align-items:center; justify-content:center; border:2px solid #a1c4cc; }
+.menu-logo { margin-top:9px; width:78px; height:78px; }
+.title { color:#ffde8a; font-size:29px; font-weight:bold; text-align:center; margin-top:4px; }
+.subtitle { color:#c6e6eb; font-size:11px; font-weight:bold; text-align:center; margin-top:3px; margin-bottom:8px; }
+.btn { width:257px; height:45px; border-radius:15px; margin-top:7px; align-items:center; justify-content:center; border:2px solid #a1c4cc; }
 .btn-label { font-size:20px; color:#ffffff; font-weight:bold; text-align:center; }
 .btn-label-dark { font-size:21px; color:#173347; font-weight:bold; text-align:center; }
 .primary { background-color:#ffd073; border-color:#fff2b9; }
