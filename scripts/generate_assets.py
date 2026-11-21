@@ -20,7 +20,7 @@ def diamond(x,y):
  return abs(x-31)/32+abs(y-15)/16 < 0.92
 for typ,color in PALETTE.items():
  for height in range(1,9):
-  H=33+height*9
+  H=105  # fixed-sized RGBA atlas cells; avoid dynamic image dimensions in Vela
   im=Image.new('RGBA',(64,H),(0,0,0,0))
   d=ImageDraw.Draw(im)
   bottom=30+height*9
