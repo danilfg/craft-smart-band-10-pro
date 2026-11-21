@@ -21,6 +21,8 @@
       <div class="pause-mini" @click="pause"><text class="pause-label">Ⅱ</text></div>
     </div>
 
+    <div if="{{screen === 'play'}}" class="exit-mini" @click="exitGame"><text class="exit-mini-label">EXIT ✕</text></div>
+
     <div if="{{screen === 'play'}}" class="hotbar" @click="cycleBlock">
       <text class="hotbar-title">BUILD: {{selectedName}}</text>
       <text class="hotbar-count">{{selectedCount}}  ↻</text>
@@ -50,6 +52,7 @@
       <div if="{{hasSave}}" class="btn continue" @click="continueGame"><text class="btn-label">▶ CONTINUE SAVE</text></div>
       <div class="btn minor" @click="openHelp"><text class="btn-label">HOW TO PLAY</text></div>
       <div class="btn exit" @click="exitGame"><text class="btn-label">✕ EXIT GAME</text></div>
+      <text if="{{bootError}}" class="boot-error">{{bootError}}</text>
       <text class="fineprint">OFFLINE • ENGLISH • VELA JS</text>
     </div>
 
@@ -122,14 +125,228 @@
 <script>
 import storage from '@system.storage'
 import app from '@system.app'
-import { createGame, restore, snapshot, renderTiles, walk, mine, place, craft, eat, attack, stepTime, isNight, HOTBAR, RECIPES } from '../../common/world.js'
+// Avoid named module import on older Xiaomi Vela firmware.
+// PocketCraft world logic. Deterministic, offline and dependency-free.
+const MATERIALS = ['grass','dirt','stone','sand','snow','wood','leaves','coal','iron','water','plank','brick','torch'];
+const RECIPES = [
+  {id:'plank',title:'4 PLANKS',needs:{wood:1},makes:{plank:4}},
+  {id:'pickaxe',title:'STONE PICK',needs:{wood:2,stone:3},makes:{pickaxe:1}},
+  {id:'sword',title:'STONE SWORD',needs:{wood:2,stone:2},makes:{sword:1}},
+  {id:'bread',title:'BERRY BREAD',needs:{berries:3},makes:{bread:1}},
+  {id:'torch',title:'4 TORCHES',needs:{wood:1,coal:1},makes:{torch:4}},
+  {id:'brick',title:'4 BRICKS',needs:{stone:4},makes:{brick:4}}
+];
+const HOTBAR = ['dirt','stone','wood','plank','brick','torch'];
+const CHUNK_SIZE = 8;
+function hash(x,y,seed) {
+  let n = Math.imul(x,374761393) + Math.imul(y,668265263) + Math.imul(seed,1442695041);
+  n = Math.imul(n ^ (n >>> 13),1274126177);
+  n = n ^ (n >>> 16);
+  return (n >>> 0) / 4294967295;
+}
+function smooth(x,y,seed,scale) {
+  const fx=x/scale, fy=y/scale, ix=Math.floor(fx),iy=Math.floor(fy);
+  let u=fx-ix,v=fy-iy;u=u*u*(3-2*u);v=v*v*(3-2*v);
+  const a=hash(ix,iy,seed),b=hash(ix+1,iy,seed),c=hash(ix,iy+1,seed),d=hash(ix+1,iy+1,seed);
+  return (a+(b-a)*u)*(1-v)+(c+(d-c)*u)*v;
+}
+function terrain(x,y,seed) {
+  const climate=smooth(x,y,seed+55,22);
+  const moisture=smooth(x,y,seed+89,16);
+  const elev=smooth(x,y,seed,9)*0.7+smooth(x,y,seed+2,4)*0.3;
+  const biome=climate<0.32?'snow':climate>0.68?'desert':moisture<0.31?'highland':'forest';
+  let h=Math.max(1,Math.min(6,Math.floor(elev*6)+1));
+  let type=biome==='desert'?'sand':biome==='snow'?'snow':biome==='highland'?'stone':'grass';
+  if(h===1 && biome!=='snow')type='water';
+  const decoration=hash(x,y,seed+772);
+  if (type==='grass' && decoration>0.955)type='wood';
+  if (type==='stone' && decoration>0.87)type=hash(x,y,seed+8)>0.58?'iron':'coal';
+  if (type==='snow' && decoration>0.98)type='wood';
+  return {h,type,biome};
+}
+function generatedCell(s,x,y) {
+  const cx=Math.floor(x/CHUNK_SIZE),cy=Math.floor(y/CHUNK_SIZE);
+  const key=cx+','+cy;
+  if(!s.chunks)s.chunks={};
+  if(!s.chunks[key]) {
+    if(Object.keys(s.chunks).length>=4)delete s.chunks[Object.keys(s.chunks)[0]];
+    const cells=[];
+    for(let ly=0;ly<CHUNK_SIZE;ly++)for(let lx=0;lx<CHUNK_SIZE;lx++)
+      cells.push(terrain(cx*CHUNK_SIZE+lx,cy*CHUNK_SIZE+ly,s.seed));
+    s.chunks[key]=cells;
+  }
+  return s.chunks[key][(y-cy*CHUNK_SIZE)*CHUNK_SIZE+(x-cx*CHUNK_SIZE)];
+}
+function cell(s,x,y) {
+  const edit=s.edits[x+','+y],base=generatedCell(s,x,y);
+  return edit?{h:edit.h,type:edit.type,biome:base.biome}:base;
+}
+function createGame(seed,mode) {
+  return {
+    seed:seed>>>0,mode:mode==='creative'?'creative':'survival',
+    x:0,y:0,dir:1,time:24,health:10,hunger:10,
+    inv:{dirt:8,stone:5,wood:4,plank:0,brick:0,torch:1,coal:0,iron:0,berries:3,bread:1,pickaxe:0,sword:0},
+    edits:{},chunks:{},selected:'dirt',enemies:[],kills:0,steps:0,tickNo:0,message:'Explore your world'
+  };
+}
+function isNight(s) { return (s.time%180)>=104; }
+function facing(s) {
+  const ds=[[0,-1],[1,0],[0,1],[-1,0]];
+  const v=ds[s.dir%4];
+  return {x:s.x+v[0],y:s.y+v[1]};
+}
+function setCell(s,x,y,h,type) {
+  const key=x+','+y;
+  // Keep save bounded on a low-memory watch; preserve most recently edited places.
+  if(!Object.prototype.hasOwnProperty.call(s.edits,key) && Object.keys(s.edits).length>=160) {
+    delete s.edits[Object.keys(s.edits)[0]];
+  }
+  s.edits[key]={h,type};
+}
+function walk(s,dir) {
+  s.dir=dir;
+  const dest=facing(s), from=cell(s,s.x,s.y), to=cell(s,dest.x,dest.y);
+  if(s.mode!=='creative' && (to.type==='water' || to.h>from.h+1)) {
+    s.message=to.type==='water'?'Water: build a bridge':'Too high: mine a step';
+    return false;
+  }
+  s.x=dest.x;s.y=dest.y;s.steps++;
+  if(s.mode==='survival' && s.steps%10===0) s.hunger=Math.max(0,s.hunger-1);
+  s.message='Biome: '+to.biome.toUpperCase();
+  return true;
+}
+function mine(s) {
+  const p=facing(s),t=cell(s,p.x,p.y);
+  if(t.type==='water' || t.h<=1) {s.message='Nothing to mine';return false;}
+  if((t.type==='iron' || t.type==='coal') && s.mode==='survival' && !s.inv.pickaxe) {
+    s.message='Craft a stone pick';return false;
+  }
+  if(s.mode==='survival') {
+    const loot=t.type==='grass'?'dirt':t.type==='snow'?'snow':t.type==='leaves'?'wood':t.type;
+    s.inv[loot]=(s.inv[loot]||0)+1;
+    if(t.type==='wood' && hash(p.x,p.y,s.seed+9)>0.48)s.inv.berries=(s.inv.berries||0)+1;
+  }
+  const below=hash(p.x,p.y,s.seed+t.h*37);
+  const next=t.h<=2?'stone':below>.89?'coal':below>.83?'iron':t.h>=4?'dirt':'stone';
+  setCell(s,p.x,p.y,t.h-1,next);
+  s.message='Mined '+t.type.toUpperCase();
+  return true;
+}
+function place(s,type) {
+  if(MATERIALS.indexOf(type)<0 || type==='water' || type==='grass' || type==='snow' || type==='coal' || type==='iron') {
+    s.message='Choose a build block';return false;
+  }
+  if(s.mode==='survival' && !(s.inv[type]>0)){s.message='No '+type+' in bag';return false;}
+  const p=facing(s),t=cell(s,p.x,p.y);
+  if(t.h>=8){s.message='Height limit reached';return false;}
+  if(s.mode==='survival')s.inv[type]--;
+  setCell(s,p.x,p.y,t.h+1,type);
+  s.message='Placed '+type.toUpperCase();
+  return true;
+}
+function craft(s,id) {
+  const recipe=RECIPES.find(r=>r.id===id);
+  if(!recipe){s.message='Unknown recipe';return false;}
+  if(s.mode==='survival') {
+    for(const k of Object.keys(recipe.needs))if((s.inv[k]||0)<recipe.needs[k]) {
+      s.message='Need '+k.toUpperCase();return false;
+    }
+    for(const k of Object.keys(recipe.needs))s.inv[k]-=recipe.needs[k];
+  }
+  for(const k of Object.keys(recipe.makes))s.inv[k]=(s.inv[k]||0)+recipe.makes[k];
+  s.message='Crafted '+recipe.title;
+  return true;
+}
+function eat(s) {
+  if(s.mode==='creative'){s.message='Creative: always full';return true;}
+  const kind=s.inv.bread>0?'bread':s.inv.berries>0?'berries':null;
+  if(!kind){s.message='Need food';return false;}
+  s.inv[kind]--;s.hunger=Math.min(10,s.hunger+(kind==='bread'?6:2));
+  s.health=Math.min(10,s.health+1);s.message='Yum!';return true;
+}
+function attack(s) {
+  const p=facing(s);
+  let best=-1,dist=3;
+  s.enemies.forEach((m,i)=>{const d=Math.abs(p.x-m.x)+Math.abs(p.y-m.y);if(d<dist){dist=d;best=i;}});
+  if(best<0){s.message='No mob nearby';return false;}
+  s.enemies.splice(best,1);s.kills++;
+  if(s.mode==='survival')s.inv.berries=(s.inv.berries||0)+1;
+  s.message='Mob defeated!';return true;
+}
+function stepTime(s) {
+  s.tickNo++;s.time=(s.time+1)%180;
+  if(s.mode==='creative')return;
+  if(s.tickNo%25===0) {
+    if(s.hunger===0)s.health=Math.max(0,s.health-1);
+    else if(s.health<10 && s.hunger>7)s.health++;
+  }
+  if(isNight(s) && s.tickNo%13===0 && s.enemies.length<3) {
+    const dx=(hash(s.tickNo,7,s.seed)>0.5?1:-1)*3;
+    const dy=(hash(s.tickNo,9,s.seed)>0.5?1:-1)*2;
+    s.enemies.push({x:s.x+dx,y:s.y+dy});
+  }
+  if(s.tickNo%4===0) {
+    s.enemies.forEach(m=>{
+      if(m.x!==s.x)m.x+=m.x>s.x?-1:1;
+      else if(m.y!==s.y)m.y+=m.y>s.y?-1:1;
+      if(Math.abs(m.x-s.x)+Math.abs(m.y-s.y)<=1)
+        s.health=Math.max(0,s.health-1);
+    });
+  }
+  if(!isNight(s))s.enemies=[];
+  if(s.health===0)s.message='You fell! Respawn to continue';
+}
+function snapshot(s) {
+  return JSON.stringify({seed:s.seed,mode:s.mode,x:s.x,y:s.y,dir:s.dir,time:s.time,health:s.health,hunger:s.hunger,inv:s.inv,edits:s.edits,selected:s.selected,kills:s.kills,steps:s.steps});
+}
+function restore(raw) {
+  const v=JSON.parse(raw);
+  if(!v || !Number.isFinite(v.seed) || !v.inv || !v.edits)throw Error('Bad save');
+  const s=createGame(v.seed,v.mode);
+  for(const k of ['x','y','dir','time','health','hunger','selected','kills','steps']) {
+    if(v[k]!==undefined)s[k]=v[k];
+  }
+  s.inv=v.inv;s.edits=v.edits;return s;
+}
+// Limit the watch to 25 image nodes per scene instead of 81. Rendering
+// the old 9x9 world on the low-memory Band 10 Pro could blank the screen.
+function renderTiles(s) {
+  const out=[],radius=2;
+  for(let layer=-radius*2;layer<=radius*2;layer++) {
+    for(let dx=-radius;dx<=radius;dx++) {
+      const dy=layer-dx;
+      if(dy < -radius || dy > radius)continue;
+      const c=cell(s,s.x+dx,s.y+dy);
+      const px=Math.round(168+(dx-dy)*30-32);
+      const py=Math.round(155+(dx+dy)*15-c.h*9);
+      out.push({
+        id:(dx+radius)*5+(dy+radius),
+        image:'/common/blocks/'+c.type+'_'+c.h+'.png',
+        x:px,y:py,type:c.type,spriteHeight:33+c.h*9
+      });
+    }
+  }
+  const front=facing(s),fx=front.x-s.x,fy=front.y-s.y;
+  const center=cell(s,s.x,s.y);
+  const mobs=s.enemies.filter(m=>Math.abs(m.x-s.x)<=2&&Math.abs(m.y-s.y)<=2).map((m,i)=>({
+    id:i,x:Math.round(168+((m.x-s.x)-(m.y-s.y))*30-17),
+    y:Math.round(155+((m.x-s.x)+(m.y-s.y))*15-cell(s,m.x,m.y).h*9-25)
+  }));
+  return {
+    blocks:out,mobs,playerY:Math.round(145-center.h*9),
+    targetX:Math.round(168+(fx-fy)*30-21),
+    targetY:Math.round(160+(fx+fy)*15-cell(s,front.x,front.y).h*9),
+    biome:center.biome
+  };
+}
+
 
 const SAVE_KEY = 'pocketcraft_save_v1'
 const TICK_MS = 1200
 
 export default {
   private: {
-    screen: 'menu', hasSave: false,
+    screen: 'menu', hasSave: false, bootError: '',
     skyImage: '/common/day_bg.png', blocks: [], mobs: [],
     hp: 10, food: 10, dayText: 'DAY', coordText: '0, 0',
     biomeText: 'FOREST', message: 'Welcome', playerY: 110,
@@ -182,26 +399,50 @@ export default {
   startCreative() { this.newWorld('creative') },
   newWorld(mode) {
     this.stopClock()
-    this._game = createGame(Date.now() & 0x7fffffff, mode)
-    this.screen = 'play'
-    this.syncView()
-    this.saveWorld()
-    this.startClock()
+    try {
+      this._game = createGame(Date.now() & 0x7fffffff, mode)
+      this.syncView()
+      this.screen = 'play'
+      this.bootError = ''
+      this.saveWorld()
+      this.startClock()
+    } catch (err) {
+      this.stopClock()
+      this._game = null
+      this.screen = 'menu'
+      this.bootError = 'Cannot open world'
+      console.error('PocketCraft init failed', err)
+    }
   },
   continueGame() {
     if (!this._cachedSave) return
-    try { this._game = restore(this._cachedSave) }
-    catch (err) { this.message = 'Save corrupted'; return }
-    this.screen = 'play'
-    this.syncView()
-    this.startClock()
+    try {
+      this._game = restore(this._cachedSave)
+      this.syncView()
+      this.screen = 'play'
+      this.bootError = ''
+      this.startClock()
+    } catch (err) {
+      this._game = null
+      this.screen = 'menu'
+      this.bootError = 'Cannot load save'
+      console.error('PocketCraft restore failed', err)
+    }
   },
   startClock() {
     this.stopClock()
     this._timer = setInterval(() => {
       if (this.screen !== 'play' || !this._game) return
       stepTime(this._game)
-      this.syncView()
+      // Minimize image-tree redraws, refresh dynamic HUD every tick.
+      if (this._game.tickNo % 4 === 0) this.syncView()
+      else {
+        this.hp = this._game.health
+        this.food = this._game.hunger
+        this.message = this._game.message
+        this.dayText = isNight(this._game) ? 'NIGHT' : 'DAY'
+        this.skyImage = isNight(this._game) ? '/common/night_bg.png' : '/common/day_bg.png'
+      }
       if (this._game.health <= 0) {
         this.stopClock()
         this.screen = 'dead'
@@ -323,7 +564,7 @@ export default {
 <style>
 .screen { width:336px; height:480px; background-color:#183350; overflow:hidden; }
 .sky { position:absolute; left:0px; top:59px; width:336px; height:287px; }
-.world { position:absolute; top:61px; left:0px; width:336px; height:285px; overflow:hidden; }
+.world { position:absolute; top:61px; left:0px; width:336px; height:285px; overflow:hidden; background-color:#598a73; }
 .voxel { position:absolute; width:64px; }
 .player { position:absolute; left:146px; width:44px; height:60px; }
 .mob { position:absolute; width:44px; height:60px; }
@@ -334,9 +575,12 @@ export default {
 .hud-food { font-size:16px; font-weight:bold; color:#ffde86; }
 .hud-day { font-size:14px; font-weight:bold; color:#99dfff; }
 .hud-position { font-size:12px; color:#bed6e5; margin-top:1px; }
-.hud-message { font-size:13px; font-weight:bold; color:#ffffff; margin-top:5px; width:315px; }
+.hud-message { font-size:13px; font-weight:bold; color:#ffffff; margin-top:5px; width:235px; }
 .pause-mini { position:absolute; right:8px; top:39px; width:34px; height:30px; border-radius:9px; background-color:#396277; align-items:center; justify-content:center; }
 .pause-label { color:#ffffff; font-size:20px; }
+.exit-mini { position:absolute; top:67px; right:8px; width:77px; height:30px; background-color:#9b3d45; border:2px solid #ffc4c4; border-radius:9px; align-items:center; justify-content:center; }
+.exit-mini-label { color:#ffffff; font-size:15px; font-weight:bold; }
+.boot-error { color:#ffb8b8; font-size:12px; text-align:center; }
 .hotbar { position:absolute; top:310px; left:11px; width:314px; height:40px; background-color:#263f56; border:2px solid #8dbeaa; border-radius:12px; flex-direction:row; align-items:center; justify-content:space-around; }
 .hotbar-title { color:#fbf3cb; font-size:17px; font-weight:bold; }
 .hotbar-count { color:#a9e9cf; font-size:19px; font-weight:bold; }
