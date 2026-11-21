@@ -10,16 +10,16 @@
 
 > Do **not** flash a firmware file to play this game. This project builds a Vela Quick App (`.rpk`), not a watch firmware image. Avoid unnecessary Bluetooth unpairing or factory resets. A real-device launch and performance test on Ceramic Edition has **not yet been independently confirmed**.
 
-## Included in v0.1.1
-- Procedural deterministic world at arbitrary signed X/Y coordinates; terrain is rendered in a lightweight 5×5 window (no world boundary).
+## Included in v0.2.0 Lite
+- Procedural deterministic world at arbitrary signed X/Y coordinates; terrain is rendered in a lightweight 3×3 window (no world boundary).
 - Four biomes: forest, desert, snow and highland. Height variation, ore distribution, wooden trees, rivers.
-- Optimized 2.5D isometric renderer with visible top and side faces, generated block textures, depth-ordered sprites.
+- Memory-constrained 2.5D isometric renderer with exactly nine fixed sprite nodes, generated block textures and depth ordering.
 - Mining, placing and cycling building blocks; selection cursor points one cell ahead.
 - Survival mode: hearts, hunger, hunger depletion on travel, day/night cycle, hostile night mobs, combat and food.
 - Creative mode: unlimited building materials, free traversing of water/height differences, no damage or hunger.
 - Inventory, recipe crafting: planks, stone pick, sword, bread, torches and bricks.
 - One offline local save slot (position, seed, edits, inventory, game mode, health); autosave and manual save.
-- Back gesture, pause, continue, explicit **EXIT GAME** button on menu/pause and **EXIT ✕** directly during gameplay.
+- Back gesture, pause, continue, explicit **EXIT GAME** button on menu/pause and **EXIT** directly during gameplay.
 - No web access, network requests, account or third-party assets.
 
 ### Controls
@@ -37,19 +37,25 @@ This is a **playable vertical slice**, not a full 3D game. Because a smartwatch 
 
 Sources: Xiaomi Vela Quick App (UX/JS), no browser engines or external services. Engine: `src/common/world.js`. UI: `src/pages/index/index.ux`. Art: generated with `scripts/generate_assets.py` (Pillow).
 
-## Black-screen fix in v0.1.1
+## Black-screen fix in v0.2.0
 
-This version addresses the black screen reported on the actual Chinese Smart Band 10 Pro Ceramic:
+The earlier builds displayed a black screen after entering the game. The actual cause has not been verified using logs from the user's band. This edition is a smaller, safer implementation designed for the limited resources of the BES2700IMP.
 
-- World engine is embedded in the page script to avoid runtime resolution issues on older Vela firmware.
-- Startup creates **25** voxel images instead of **81**; only every fourth world tick refreshes the scene.
-- World is rendered before switching away from the menu, and recoverable errors return to the menu.
-- **EXIT ✕** is always visible on the gameplay screen. Swipe right or use the device back gesture to pause, then **MAIN MENU** or **EXIT GAME**.
-- Manifest versionCode is incremented to **2** so the updated RPK can replace v0.1.
+Hardware verified from Xiaomi Ceramic FAQ: **BES2700IMP**, **32 MB RAM**, **512 MB ROM**, **1.74-inch AMOLED**, portrait display **336 x 480**. Native development research reports Cortex-M33 and the NuttX / Vela / QuickJS stack.
 
-Download the most recent successful GitHub Actions release and update the existing quick app through AstroBox. If the old build remains black, remove **only the Pocket Craft quick app** and install the new RPK; **do not reset the watch or unpair it from Mi Fitness**. Removing the quick app may delete its local saved game.
+- Exactly **9 fixed voxel images** instead of 81 originally (then 25). No loop-generated UI tree for the world.
+- All voxel PNGs are normalized to **64 x 105 pixels**, so the image component has fixed dimensions.
+- World initialization occurs after the small **PREPARING WORLD...** screen can render.
+- The menu does not preload the entire world or run the animation timer.
+- World visuals update at most every fourth 1.8-second tick; HUD updates can be more frequent.
+- Game saves are batched (every eight actions, periodically and on exit) instead of synchronously after each move.
+- An **EXIT** button is visible while playing; pause/back/menu and app termination are always available.
+- A failure while initializing or rendering returns to the menu with an error label rather than leaving a half-initialized game.
+- Manifest versionCode is **3**, so AstroBox can replace an older installed version.
 
-The fixes passed logic/UI smoke checks, but full firmware-level rendering still requires verification on the physical device.
+Install the latest **successful** GitHub Actions release. If it does not replace the older version, remove **only the Pocket Craft application** and install the newer RPK (this may erase the local game save). **Do not unpair Mi Fitness or factory-reset your band.**
+
+If even this minimal edition is black, please report whether the black screen happens before the menu, while **PREPARING WORLD...**, or after entering the world: those symptoms indicate different faults. Runtime compatibility on the actual device is still not confirmed.
 
 ## Build
 
