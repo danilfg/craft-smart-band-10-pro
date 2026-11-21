@@ -63,28 +63,30 @@ test('save/restore retains modified world and inventory',()=>{
 test('isometric render order and target are finite',()=>{
  const s=createGame(34,'creative');
  const scene=renderTiles(s);
- assert.equal(scene.blocks.length,25);
+ assert.equal(scene.blocks.length,9);
  assert.ok(scene.blocks.every(b=>Number.isFinite(b.x)&&Number.isFinite(b.y)));
  assert.ok(scene.blocks.every(b=>b.image.endsWith('.png')));
- assert.ok(scene.blocks.every(b=>Number.isFinite(b.spriteHeight) && b.spriteHeight>30));
+ assert.ok(scene.blocks.every(b=>Number.isFinite(b.h) && b.h>30));
 });
 
-test('watch UI smoke: scene starts, back pauses, menu and EXIT terminate',()=>{
+test('watch UI smoke: staged boot, tiny render, escape routes and save',()=>{
  const ux=readFileSync(new URL('../src/pages/index/index.ux',import.meta.url),'utf8');
- const embedded=source.replace(/^export /gm,'');
- assert.ok(ux.includes(embedded),'The installed inline Vela world engine must match tested source');
- assert.ok(ux.includes('class="exit-mini" @click="exitGame"'),'EXIT must be accessible while playing');
+ assert.ok(ux.includes(source.replace(/^export /gm,'')),'Embedded engine must match source');
+ assert.equal((ux.match(/class="voxel"/g)||[]).length,9);
+ assert.ok(!ux.includes('for="{{blocks}}"'),'Never create large image node lists');
+ assert.ok(ux.includes('class="exit-small" @click="exitGame"'),'EXIT must be visible while playing');
  const script=ux.split('<script>')[1].split('</script>')[0]
    .replace(/^import storage.*$/gm,'')
    .replace(/^import app.*$/gm,'')
    .replace('export default','return');
- let terminated=false;
- let tick=null;
- const page=Function('storage','app','console','setInterval','clearInterval',script)(
-   {get(){},set(){}},
+ let terminated=false,boot=null,tick=null,writes=0;
+ const page=Function('storage','app','console','setInterval','clearInterval','setTimeout','clearTimeout',script)(
+   {get(){},set(){writes++}},
    {terminate(){terminated=true}},
    {error(){},warn(){}},
    fn=>{tick=fn;return 1},
+   ()=>{},
+   fn=>{boot=fn;return 2},
    ()=>{}
  );
  const vm={...page.private};
@@ -92,17 +94,27 @@ test('watch UI smoke: scene starts, back pauses, menu and EXIT terminate',()=>{
  vm.onInit();
  assert.equal(vm.screen,'menu');
  vm.startCreative();
+ assert.equal(vm.screen,'loading');
+ boot();
  assert.equal(vm.screen,'play');
- assert.equal(vm.blocks.length,25);
+ assert.equal(vm.tile0Src.endsWith('.png'),true);
+ assert.equal(vm.tile8Src.endsWith('.png'),true);
+ assert.ok(Number.isFinite(vm.tile4Y));
+ assert.equal(typeof tick,'function');
  tick();
  vm.onBackPress();
  assert.equal(vm.screen,'pause');
+ assert.ok(writes>0);
  vm.resume();
  assert.equal(vm.screen,'play');
  vm.handleSwipe({direction:'right'});
  assert.equal(vm.screen,'pause');
  vm.toMenu();
  assert.equal(vm.screen,'menu');
+ vm.continueGame();
+ assert.equal(vm.screen,'loading');
+ boot();
+ assert.equal(vm.screen,'play');
  vm.exitGame();
  assert.equal(terminated,true);
 });
