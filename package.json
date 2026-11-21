@@ -1,0 +1,20 @@
+{
+  "name": "pocket-craft-vela",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline voxel survival sandbox for Xiaomi Smart Band 10 Pro Ceramic",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "aiot build",
+    "dev": "aiot start",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node scripts/check-project.cjs",
+    "assets": "python3 scripts/generate_assets.py"
+  },
+  "devDependencies": {
+    "aiot-toolkit": "2.0.4"
+  }
+}
