@@ -1,0 +1,390 @@
+<template>
+  <stack class="screen" @swipe="handleSwipe">
+    <image class="sky" src="{{skyImage}}"></image>
+
+    <!-- Depth-sorted visible voxel columns: only top and exterior faces exist in each sprite. -->
+    <stack if="{{screen === 'play'}}" class="world">
+      <image class="voxel" for="{{blocks}}" tid="id" src="{{$item.image}}" style="left: {{$item.x}}px; top: {{$item.y}}px;"></image>
+      <image class="target" src="/common/cursor.png" style="left: {{targetX}}px; top: {{targetY}}px;"></image>
+      <image class="mob" for="{{mobs}}" tid="id" src="/common/zombie.png" style="left: {{$item.x}}px; top: {{$item.y}}px;"></image>
+      <image class="player" src="/common/player.png" style="top: {{playerY}}px;"></image>
+    </stack>
+
+    <div if="{{screen === 'play'}}" class="hud">
+      <div class="hud-line">
+        <text class="hud-hp">♥ {{hp}}/10</text>
+        <text class="hud-food">FOOD {{food}}/10</text>
+        <text class="hud-day">{{dayText}}</text>
+      </div>
+      <text class="hud-position">{{coordText}}  •  {{biomeText}}</text>
+      <text class="hud-message">{{message}}</text>
+      <div class="pause-mini" @click="pause"><text class="pause-label">Ⅱ</text></div>
+    </div>
+
+    <div if="{{screen === 'play'}}" class="hotbar" @click="cycleBlock">
+      <text class="hotbar-title">BUILD: {{selectedName}}</text>
+      <text class="hotbar-count">{{selectedCount}}  ↻</text>
+    </div>
+
+    <div if="{{screen === 'play'}}" class="dpad">
+      <div class="dkey up" @click="north"><text class="dkey-text">▲</text></div>
+      <div class="dkey left" @click="west"><text class="dkey-text">◀</text></div>
+      <div class="dkey right" @click="east"><text class="dkey-text">▶</text></div>
+      <div class="dkey down" @click="south"><text class="dkey-text">▼</text></div>
+    </div>
+
+    <div if="{{screen === 'play'}}" class="actions">
+      <div class="action mine" @click="dig"><text class="action-text">⛏ MINE</text></div>
+      <div class="action place" @click="build"><text class="action-text">▣ PLACE</text></div>
+      <div class="action fight" @click="hit"><text class="action-text">⚔ HIT</text></div>
+      <div class="action bag" @click="openBag"><text class="action-text">BAG</text></div>
+    </div>
+
+    <!-- Fully offline menu / survival / creative / save -->
+    <div if="{{screen === 'menu'}}" class="panel menu">
+      <image class="menu-logo" src="/common/logo.png"></image>
+      <text class="title">POCKET CRAFT</text>
+      <text class="subtitle">A VOXEL WORLD ON YOUR WRIST</text>
+      <div class="btn primary" @click="startSurvival"><text class="btn-label-dark">♥ SURVIVAL</text></div>
+      <div class="btn creative" @click="startCreative"><text class="btn-label">✦ CREATIVE</text></div>
+      <div if="{{hasSave}}" class="btn continue" @click="continueGame"><text class="btn-label">▶ CONTINUE SAVE</text></div>
+      <div class="btn minor" @click="openHelp"><text class="btn-label">HOW TO PLAY</text></div>
+      <div class="btn exit" @click="exitGame"><text class="btn-label">✕ EXIT GAME</text></div>
+      <text class="fineprint">OFFLINE • ENGLISH • VELA JS</text>
+    </div>
+
+    <div if="{{screen === 'pause'}}" class="panel overlay">
+      <text class="panel-title">PAUSED</text>
+      <text class="overlay-message">{{coordText}}</text>
+      <div class="btn primary" @click="resume"><text class="btn-label-dark">▶ RESUME</text></div>
+      <div class="btn creative" @click="openCraft"><text class="btn-label">⚒ CRAFT</text></div>
+      <div class="btn minor" @click="saveNow"><text class="btn-label">SAVE WORLD</text></div>
+      <div class="btn minor" @click="toMenu"><text class="btn-label">MAIN MENU</text></div>
+      <div class="btn exit" @click="exitGame"><text class="btn-label">✕ EXIT GAME</text></div>
+    </div>
+
+    <div if="{{screen === 'bag'}}" class="panel list-panel">
+      <text class="panel-title small-title">INVENTORY</text>
+      <text class="overlay-message">Tap to select build block</text>
+      <list class="inventory-list">
+        <list-item class="inventory-row" for="{{inventoryRows}}" type="item" @click="selectMaterial($item.id)">
+          <text class="inventory-name">{{$item.name}}</text>
+          <text class="inventory-count">{{$item.count}}</text>
+        </list-item>
+      </list>
+      <div class="bag-footer">
+        <div class="small-btn" @click="eatFood"><text class="small-btn-label">EAT</text></div>
+        <div class="small-btn" @click="openCraft"><text class="small-btn-label">CRAFT</text></div>
+        <div class="small-btn" @click="resume"><text class="small-btn-label">BACK</text></div>
+      </div>
+    </div>
+
+    <div if="{{screen === 'craft'}}" class="panel list-panel">
+      <text class="panel-title small-title">CRAFTING</text>
+      <text class="overlay-message">Tap a recipe to craft</text>
+      <list class="recipes-list">
+        <list-item class="recipe-row" for="{{recipeRows}}" type="item" @click="make($item.id)">
+          <text class="recipe-name">{{$item.title}}</text>
+          <text class="recipe-cost">{{$item.cost}}</text>
+        </list-item>
+      </list>
+      <div class="bag-footer">
+        <div class="small-btn" @click="openBag"><text class="small-btn-label">BAG</text></div>
+        <div class="small-btn" @click="eatFood"><text class="small-btn-label">EAT</text></div>
+        <div class="small-btn" @click="resume"><text class="small-btn-label">PLAY ▶</text></div>
+      </div>
+    </div>
+
+    <div if="{{screen === 'help'}}" class="panel help-panel">
+      <text class="panel-title small-title">HOW TO PLAY</text>
+      <text class="help-text">ARROWS: WALK AND FACE A BLOCK</text>
+      <text class="help-text">MINE: DIG THE YELLOW TARGET</text>
+      <text class="help-text">PLACE: BUILD USING YOUR BAG</text>
+      <text class="help-text">BAG: CHOOSE BLOCKS, EAT, CRAFT</text>
+      <text class="help-text">NIGHT: FIGHT MONSTERS OR HIDE!</text>
+      <text class="help-text">CREATIVE: FREE BLOCKS + FLIGHT</text>
+      <text class="help-text">SWIPE RIGHT: PAUSE OR BACK</text>
+      <text class="help-text">WORLD SAVES AS YOU PLAY.</text>
+      <div class="btn primary" @click="toMenu"><text class="btn-label-dark">GOT IT</text></div>
+    </div>
+
+    <div if="{{screen === 'dead'}}" class="panel overlay">
+      <text class="panel-title">GAME OVER</text>
+      <text class="overlay-message">The night was too dangerous.</text>
+      <text class="overlay-message">BLOCKS BUILT: {{editsCount}}</text>
+      <div class="btn primary" @click="respawn"><text class="btn-label-dark">↻ RESPAWN</text></div>
+      <div class="btn minor" @click="toMenu"><text class="btn-label">MAIN MENU</text></div>
+      <div class="btn exit" @click="exitGame"><text class="btn-label">✕ EXIT GAME</text></div>
+    </div>
+  </stack>
+</template>
+
+<script>
+import storage from '@system.storage'
+import app from '@system.app'
+import { createGame, restore, snapshot, renderTiles, walk, mine, place, craft, eat, attack, stepTime, isNight, HOTBAR, RECIPES } from '../../common/world.js'
+
+const SAVE_KEY = 'pocketcraft_save_v1'
+const TICK_MS = 1200
+
+export default {
+  private: {
+    screen: 'menu', hasSave: false,
+    skyImage: '/common/day_bg.png', blocks: [], mobs: [],
+    hp: 10, food: 10, dayText: 'DAY', coordText: '0, 0',
+    biomeText: 'FOREST', message: 'Welcome', playerY: 110,
+    targetX: 160, targetY: 110, selectedName: 'DIRT',
+    selectedCount: '8', inventoryRows: [], recipeRows: [], editsCount: 0
+  },
+  onInit() {
+    this._game = null
+    this._cachedSave = null
+    this._timer = null
+    this._lastSaveAt = 0
+    try {
+      storage.get({
+        key: SAVE_KEY,
+        success: (res) => {
+          if (!res || !res.data) return
+          try {
+            restore(res.data)
+            this._cachedSave = res.data
+            this.hasSave = true
+          } catch (err) { console.warn('Invalid world save') }
+        },
+        fail: () => {}
+      })
+    } catch (err) { console.warn('Storage not available') }
+  },
+  onHide() {
+    if (this.screen === 'play') this.pause()
+    else this.stopClock()
+  },
+  onDestroy() { this.stopClock() },
+  onBackPress() {
+    if (this.screen === 'play') this.pause()
+    else if (this.screen === 'menu') this.exitGame()
+    else if (this.screen === 'help' || this.screen === 'dead') this.toMenu()
+    else this.resume()
+    return true
+  },
+  handleSwipe(e) {
+    if (!e) return
+    if (e.direction === 'right') {
+      if (this.screen === 'play') this.pause()
+      else if (this.screen === 'menu') this.exitGame()
+      else if (this.screen === 'help' || this.screen === 'dead') this.toMenu()
+      else this.resume()
+    } else if (this.screen === 'play' && e.direction === 'up') this.north()
+    else if (this.screen === 'play' && e.direction === 'down') this.south()
+  },
+  startSurvival() { this.newWorld('survival') },
+  startCreative() { this.newWorld('creative') },
+  newWorld(mode) {
+    this.stopClock()
+    this._game = createGame(Date.now() & 0x7fffffff, mode)
+    this.screen = 'play'
+    this.syncView()
+    this.saveWorld()
+    this.startClock()
+  },
+  continueGame() {
+    if (!this._cachedSave) return
+    try { this._game = restore(this._cachedSave) }
+    catch (err) { this.message = 'Save corrupted'; return }
+    this.screen = 'play'
+    this.syncView()
+    this.startClock()
+  },
+  startClock() {
+    this.stopClock()
+    this._timer = setInterval(() => {
+      if (this.screen !== 'play' || !this._game) return
+      stepTime(this._game)
+      this.syncView()
+      if (this._game.health <= 0) {
+        this.stopClock()
+        this.screen = 'dead'
+        this.saveWorld()
+      } else if (this._game.tickNo % 5 === 0) this.saveWorld()
+    }, TICK_MS)
+  },
+  stopClock() {
+    if (this._timer) { clearInterval(this._timer); this._timer = null }
+  },
+  saveWorld() {
+    if (!this._game) return
+    try {
+      const data = snapshot(this._game)
+      this._cachedSave = data
+      this.hasSave = true
+      storage.set({key:SAVE_KEY,value:data,fail:()=>{ console.warn('Save failed') }})
+    } catch (err) { console.warn('Save unavailable') }
+  },
+  saveNow() { this.saveWorld(); this.message = 'World saved' },
+  syncView() {
+    const s = this._game
+    if (!s) return
+    const scene = renderTiles(s)
+    this.blocks = scene.blocks
+    this.mobs = scene.mobs
+    this.playerY = scene.playerY
+    this.targetX = scene.targetX
+    this.targetY = scene.targetY
+    this.hp = s.health
+    this.food = s.hunger
+    this.dayText = isNight(s) ? 'NIGHT' : 'DAY'
+    this.skyImage = isNight(s) ? '/common/night_bg.png' : '/common/day_bg.png'
+    this.coordText = 'X '+s.x+'  Y '+s.y
+    this.biomeText = scene.biome.toUpperCase()
+    this.message = s.message
+    this.selectedName = s.selected.toUpperCase()
+    this.selectedCount = s.mode === 'creative' ? '∞' : String(s.inv[s.selected]||0)
+    this.editsCount = Object.keys(s.edits).length
+    this.inventoryRows = Object.keys(s.inv).map(k=>({
+      id:k,name:k.toUpperCase(),
+      count:s.mode==='creative'?'∞':String(s.inv[k]||0)
+    }))
+    this.recipeRows = RECIPES.map(r=>({
+      id:r.id,title:r.title,
+      cost:Object.keys(r.needs).map(k=>r.needs[k]+' '+k.toUpperCase()).join(' + ')
+    }))
+  },
+  move(dir) {
+    if (this.screen !== 'play' || !this._game) return
+    walk(this._game,dir)
+    this.syncView()
+    this.saveWorld()
+  },
+  north() { this.move(0) },
+  east() { this.move(1) },
+  south() { this.move(2) },
+  west() { this.move(3) },
+  dig() {
+    if (!this._game) return
+    mine(this._game); this.syncView(); this.saveWorld()
+  },
+  build() {
+    if (!this._game) return
+    place(this._game,this._game.selected); this.syncView(); this.saveWorld()
+  },
+  hit() {
+    if (!this._game) return
+    attack(this._game); this.syncView(); this.saveWorld()
+  },
+  cycleBlock() {
+    if (!this._game) return
+    const i=HOTBAR.indexOf(this._game.selected)
+    this._game.selected=HOTBAR[(i+1)%HOTBAR.length]
+    this.syncView()
+  },
+  selectMaterial(id) {
+    if (HOTBAR.indexOf(id) >= 0) {
+      this._game.selected = id
+      this._game.message = 'Selected '+id.toUpperCase()
+      this.resume()
+    } else {
+      this._game.message = 'Not a building block'
+      this.syncView()
+    }
+  },
+  make(id) {
+    if (!this._game) return
+    craft(this._game,id)
+    this.syncView()
+    this.saveWorld()
+  },
+  eatFood() {
+    if (!this._game) return
+    eat(this._game);this.syncView();this.saveWorld()
+  },
+  openCraft() { if (this._game) { this.stopClock(); this.syncView(); this.screen='craft' } },
+  openBag() { if (this._game) { this.stopClock(); this.syncView(); this.screen='bag' } },
+  openHelp() { this.screen='help' },
+  pause() { if (this._game) { this.stopClock(); this.saveWorld(); this.screen='pause' } },
+  resume() {
+    if (!this._game) { this.toMenu();return }
+    this.screen='play';this.syncView();this.startClock()
+  },
+  respawn() {
+    if (!this._game)return
+    this._game.x=0;this._game.y=0;this._game.health=10
+    this._game.hunger=8;this._game.time=30;this._game.enemies=[]
+    this._game.message='Back to adventure!'
+    this.saveWorld();this.resume()
+  },
+  toMenu() { this.stopClock();this.saveWorld();this.screen='menu' },
+  exitGame() {
+    this.stopClock();this.saveWorld();app.terminate()
+  }
+}
+</script>
+
+<style>
+.screen { width:336px; height:480px; background-color:#183350; overflow:hidden; }
+.sky { position:absolute; left:0px; top:59px; width:336px; height:287px; }
+.world { position:absolute; top:61px; left:0px; width:336px; height:285px; overflow:hidden; }
+.voxel { position:absolute; width:64px; height:105px; }
+.player { position:absolute; left:146px; width:44px; height:60px; }
+.mob { position:absolute; width:44px; height:60px; }
+.target { position:absolute; width:64px; height:40px; }
+.hud { position:absolute; top:0px; left:0px; width:336px; height:103px; background-color:rgba(11,29,49,.88); padding:8px; flex-direction:column; }
+.hud-line { width:320px; height:28px; flex-direction:row; justify-content:space-between; align-items:center; }
+.hud-hp { font-size:19px; font-weight:bold; color:#ff777b; }
+.hud-food { font-size:16px; font-weight:bold; color:#ffde86; }
+.hud-day { font-size:14px; font-weight:bold; color:#99dfff; }
+.hud-position { font-size:12px; color:#bed6e5; margin-top:1px; }
+.hud-message { font-size:13px; font-weight:bold; color:#ffffff; margin-top:5px; width:315px; }
+.pause-mini { position:absolute; right:8px; top:39px; width:34px; height:30px; border-radius:9px; background-color:#396277; align-items:center; justify-content:center; }
+.pause-label { color:#ffffff; font-size:20px; }
+.hotbar { position:absolute; top:310px; left:11px; width:314px; height:40px; background-color:#263f56; border:2px solid #8dbeaa; border-radius:12px; flex-direction:row; align-items:center; justify-content:space-around; }
+.hotbar-title { color:#fbf3cb; font-size:17px; font-weight:bold; }
+.hotbar-count { color:#a9e9cf; font-size:19px; font-weight:bold; }
+.dpad { position:absolute; top:356px; left:7px; width:157px; height:120px; }
+.dkey { position:absolute; background-color:#386481; border:2px solid #9cc9d1; border-radius:13px; width:48px; height:38px; align-items:center; justify-content:center; }
+.dkey-text { color:#ffffff; font-size:24px; font-weight:bold; }
+.up { left:55px; top:0px; }
+.down { left:55px; top:80px; }
+.left { left:2px; top:40px; }
+.right { left:107px; top:40px; }
+.actions { position:absolute; top:355px; left:172px; width:158px; height:122px; flex-direction:row; flex-wrap:wrap; justify-content:space-around; align-content:space-around; }
+.action { width:75px; height:55px; border-radius:12px; align-items:center; justify-content:center; border:2px solid #9dbdc8; }
+.mine { background-color:#6b5a4b; }
+.place { background-color:#37724f; }
+.fight { background-color:#81494b; }
+.bag { background-color:#4d5d83; }
+.action-text { color:#ffffff; font-size:17px; font-weight:bold; }
+.panel { position:absolute; left:10px; top:16px; width:316px; height:448px; border:2px solid #6bc1b2; border-radius:23px; align-items:center; flex-direction:column; background-color:rgba(17,37,57,.97); }
+.menu { top:17px; }
+.menu-logo { margin-top:14px; width:95px; height:95px; }
+.title { color:#ffde8a; font-size:30px; font-weight:bold; text-align:center; margin-top:7px; }
+.subtitle { color:#c6e6eb; font-size:11px; font-weight:bold; text-align:center; margin-top:4px; margin-bottom:13px; }
+.btn { width:257px; height:49px; border-radius:15px; margin-top:9px; align-items:center; justify-content:center; border:2px solid #a1c4cc; }
+.btn-label { font-size:20px; color:#ffffff; font-weight:bold; text-align:center; }
+.btn-label-dark { font-size:21px; color:#173347; font-weight:bold; text-align:center; }
+.primary { background-color:#ffd073; border-color:#fff2b9; }
+.creative { background-color:#396d9a; }
+.continue { background-color:#38785d; }
+.minor { background-color:#395d72; height:41px; }
+.exit { background-color:#693d49; height:41px; }
+.fineprint { color:#9bb9ba; font-size:11px; margin-top:8px; }
+.overlay { top:67px; height:355px; justify-content:center; }
+.panel-title { color:#ffdc8c; font-size:31px; font-weight:bold; margin-bottom:14px; text-align:center; }
+.overlay-message { font-size:15px; color:#b6d5e0; text-align:center; margin-bottom:8px; }
+.list-panel { top:9px; height:462px; }
+.small-title { margin-top:18px; margin-bottom:4px; font-size:26px; }
+.inventory-list { width:282px; height:320px; margin-top:7px; }
+.inventory-row { width:277px; height:39px; background-color:#2b4a5f; border-radius:9px; margin-top:3px; padding:8px; flex-direction:row; justify-content:space-between; align-items:center; }
+.inventory-name { font-size:18px; color:#ffffff; font-weight:bold; }
+.inventory-count { font-size:18px; color:#ffe09b; }
+.recipes-list { width:282px; height:320px; margin-top:7px; }
+.recipe-row { width:277px; height:49px; background-color:#2b4a5f; border-radius:9px; margin-top:4px; padding-left:10px; justify-content:center; }
+.recipe-name { font-size:18px; color:#ffe09b; font-weight:bold; }
+.recipe-cost { font-size:13px; color:#c8d7dc; }
+.bag-footer { width:290px; height:56px; flex-direction:row; justify-content:space-between; align-items:center; }
+.small-btn { width:91px; height:45px; border-radius:12px; background-color:#4a7b77; justify-content:center; align-items:center; }
+.small-btn-label { color:#ffffff; font-size:19px; font-weight:bold; }
+.help-panel { top:35px; height:415px; padding-top:12px; }
+.help-text { color:#dfebef; font-size:14px; margin-top:12px; text-align:center; }
+.help-panel .btn { margin-top:18px; }
+</style>
