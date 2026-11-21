@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createGame,terrain,cell,hash,walk,mine,place,craft,eat,attack,stepTime,renderTiles,snapshot,restore,isNight} from '../src/common/world.js';
+import {readFileSync} from 'node:fs';
+const source=readFileSync(new URL('../src/common/world.js',import.meta.url),'utf8');
+const {createGame,terrain,cell,hash,walk,mine,place,craft,eat,attack,stepTime,renderTiles,snapshot,restore,isNight} =
+ await import('data:text/javascript;charset=utf-8,'+encodeURIComponent(source));
 
 test('deterministic unlimited terrain in three climate biomes',()=>{
  const a=terrain(284,12,12345);
