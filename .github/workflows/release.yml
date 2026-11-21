@@ -67,8 +67,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="v0.1.${{ github.run_number }}"
+          TAG="v0.2.${{ github.run_number }}"
           gh release create "$TAG" out/PocketCraft-Band10Pro.rpk \
             --title "Pocket Craft $TAG" \
-            --notes "Original offline voxel-survival sandbox RPK for Xiaomi Smart Band 10 Pro Ceramic (CN). This is a 2.5D isometric vertical slice with procedurally generated terrain, mine/build, Survival/Creative, crafting and local saves. Experimental: real-device compatibility is unverified." \
+            --notes "Pocket Craft Lite v0.2: tuned for BES2700IMP/32MB RAM on Xiaomi Smart Band 10 Pro Ceramic (CN). Nine fixed voxel sprites, staged launch, explicit EXIT, deferred saves. Procedural 2.5D sandbox with Survival/Creative and crafting. Firmware-level validation still pending." \
             --latest
