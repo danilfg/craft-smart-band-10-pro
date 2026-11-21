@@ -41,7 +41,7 @@ function generatedCell(s,x,y) {
   const key=cx+','+cy;
   if(!s.chunks)s.chunks={};
   if(!s.chunks[key]) {
-    if(Object.keys(s.chunks).length>=9)delete s.chunks[Object.keys(s.chunks)[0]];
+    if(Object.keys(s.chunks).length>=4)delete s.chunks[Object.keys(s.chunks)[0]];
     const cells=[];
     for(let ly=0;ly<CHUNK_SIZE;ly++)for(let lx=0;lx<CHUNK_SIZE;lx++)
       cells.push(terrain(cx*CHUNK_SIZE+lx,cy*CHUNK_SIZE+ly,s.seed));
@@ -180,23 +180,34 @@ export function restore(raw) {
   }
   s.inv=v.inv;s.edits=v.edits;return s;
 }
+// Limit the watch to 25 image nodes per scene instead of 81. Rendering
+// the old 9x9 world on the low-memory Band 10 Pro could blank the screen.
 export function renderTiles(s) {
-  const out=[],radius=4;
+  const out=[],radius=2;
   for(let layer=-radius*2;layer<=radius*2;layer++) {
     for(let dx=-radius;dx<=radius;dx++) {
       const dy=layer-dx;
       if(dy < -radius || dy > radius)continue;
       const c=cell(s,s.x+dx,s.y+dy);
-      const px=Math.round(168+(dx-dy)*24-32);
-      const py=Math.round(133+(dx+dy)*12-c.h*9);
-      out.push({id:(dx+radius)*9+(dy+radius),image:'/common/blocks/'+c.type+'_'+c.h+'.png',x:px,y:py,type:c.type,spriteHeight:33+c.h*9});
+      const px=Math.round(168+(dx-dy)*30-32);
+      const py=Math.round(155+(dx+dy)*15-c.h*9);
+      out.push({
+        id:(dx+radius)*5+(dy+radius),
+        image:'/common/blocks/'+c.type+'_'+c.h+'.png',
+        x:px,y:py,type:c.type,spriteHeight:33+c.h*9
+      });
     }
   }
   const front=facing(s),fx=front.x-s.x,fy=front.y-s.y;
   const center=cell(s,s.x,s.y);
-  const mobs=s.enemies.filter(m=>Math.abs(m.x-s.x)<5&&Math.abs(m.y-s.y)<5).map((m,i)=>({
-    id:i,x:Math.round(168+((m.x-s.x)-(m.y-s.y))*24-17),
-    y:Math.round(132+((m.x-s.x)+(m.y-s.y))*12-cell(s,m.x,m.y).h*9-25)
+  const mobs=s.enemies.filter(m=>Math.abs(m.x-s.x)<=2&&Math.abs(m.y-s.y)<=2).map((m,i)=>({
+    id:i,x:Math.round(168+((m.x-s.x)-(m.y-s.y))*30-17),
+    y:Math.round(155+((m.x-s.x)+(m.y-s.y))*15-cell(s,m.x,m.y).h*9-25)
   }));
-  return {blocks:out,mobs,playerY:Math.round(124-center.h*9),targetX:Math.round(168+(fx-fy)*24-21),targetY:Math.round(138+(fx+fy)*12-cell(s,front.x,front.y).h*9),biome:center.biome};
+  return {
+    blocks:out,mobs,playerY:Math.round(145-center.h*9),
+    targetX:Math.round(168+(fx-fy)*30-21),
+    targetY:Math.round(160+(fx+fy)*15-cell(s,front.x,front.y).h*9),
+    biome:center.biome
+  };
 }
