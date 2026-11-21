@@ -20,6 +20,14 @@ for(const name of ['grass','dirt','stone','sand','snow','wood','leaves','coal','
   const png=fs.readFileSync(file);
   assert.equal(png.subarray(1,4).toString('ascii'),'PNG',file);
   assert.equal(png.readUInt32BE(16),64,file+' width');
+  assert.equal(png.readUInt32BE(20),105,file+' height');
  }
 }
-console.log('PocketCraft: validated manifest, UI and all 104 generated pixel-art block sprites.');
+const fixedImageCount=(page.match(/class="voxel"/g)||[]).length;
+assert.equal(fixedImageCount,9,'Use exactly 9 fixed voxel nodes on the 32 MB watch');
+assert.ok(!page.includes('for="{{blocks}}"'),'Unbounded dynamic voxel lists are forbidden');
+assert.ok(page.includes('if="{{screen === \'loading\'}}"'),'Require a visible load state');
+assert.ok(page.includes('class="exit-small" @click="exitGame"'),'Require an EXIT action while playing');
+assert.ok(page.includes('app.terminate()'),'Exit must terminate the quick app');
+assert.equal(manifest.versionCode>=3,true,'Increment versionCode for watch update');
+console.log('PocketCraft Lite: manifest, EXIT, 9 image nodes and 104 fixed-size PNG sprites validated.');
