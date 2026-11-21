@@ -9,6 +9,7 @@ export const RECIPES = [
   {id:'brick',title:'4 BRICKS',needs:{stone:4},makes:{brick:4}}
 ];
 export const HOTBAR = ['dirt','stone','wood','plank','brick','torch'];
+export const CHUNK_SIZE = 8;
 export function hash(x,y,seed) {
   let n = Math.imul(x,374761393) + Math.imul(y,668265263) + Math.imul(seed,1442695041);
   n = Math.imul(n ^ (n >>> 13),1274126177);
@@ -35,17 +36,29 @@ export function terrain(x,y,seed) {
   if (type==='snow' && decoration>0.98)type='wood';
   return {h,type,biome};
 }
+function generatedCell(s,x,y) {
+  const cx=Math.floor(x/CHUNK_SIZE),cy=Math.floor(y/CHUNK_SIZE);
+  const key=cx+','+cy;
+  if(!s.chunks)s.chunks={};
+  if(!s.chunks[key]) {
+    if(Object.keys(s.chunks).length>=9)delete s.chunks[Object.keys(s.chunks)[0]];
+    const cells=[];
+    for(let ly=0;ly<CHUNK_SIZE;ly++)for(let lx=0;lx<CHUNK_SIZE;lx++)
+      cells.push(terrain(cx*CHUNK_SIZE+lx,cy*CHUNK_SIZE+ly,s.seed));
+    s.chunks[key]=cells;
+  }
+  return s.chunks[key][(y-cy*CHUNK_SIZE)*CHUNK_SIZE+(x-cx*CHUNK_SIZE)];
+}
 export function cell(s,x,y) {
-  const key=x+','+y;
-  const edit=s.edits[key];
-  return edit ? {h:edit.h,type:edit.type,biome:terrain(x,y,s.seed).biome} : terrain(x,y,s.seed);
+  const edit=s.edits[x+','+y],base=generatedCell(s,x,y);
+  return edit?{h:edit.h,type:edit.type,biome:base.biome}:base;
 }
 export function createGame(seed,mode) {
   return {
     seed:seed>>>0,mode:mode==='creative'?'creative':'survival',
     x:0,y:0,dir:1,time:24,health:10,hunger:10,
     inv:{dirt:8,stone:5,wood:4,plank:0,brick:0,torch:1,coal:0,iron:0,berries:3,bread:1,pickaxe:0,sword:0},
-    edits:{},selected:'dirt',enemies:[],kills:0,steps:0,tickNo:0,message:'Explore your world'
+    edits:{},chunks:{},selected:'dirt',enemies:[],kills:0,steps:0,tickNo:0,message:'Explore your world'
   };
 }
 export function isNight(s) { return (s.time%180)>=104; }
@@ -176,7 +189,7 @@ export function renderTiles(s) {
       const c=cell(s,s.x+dx,s.y+dy);
       const px=Math.round(168+(dx-dy)*24-32);
       const py=Math.round(133+(dx+dy)*12-c.h*9);
-      out.push({id:(dx+radius)*9+(dy+radius),image:'/common/blocks/'+c.type+'_'+c.h+'.png',x:px,y:py,type:c.type});
+      out.push({id:(dx+radius)*9+(dy+radius),image:'/common/blocks/'+c.type+'_'+c.h+'.png',x:px,y:py,type:c.type,spriteHeight:33+c.h*9});
     }
   }
   const front=facing(s),fx=front.x-s.x,fy=front.y-s.y;
