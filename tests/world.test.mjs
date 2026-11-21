@@ -63,7 +63,46 @@ test('save/restore retains modified world and inventory',()=>{
 test('isometric render order and target are finite',()=>{
  const s=createGame(34,'creative');
  const scene=renderTiles(s);
- assert.equal(scene.blocks.length,81);
+ assert.equal(scene.blocks.length,25);
  assert.ok(scene.blocks.every(b=>Number.isFinite(b.x)&&Number.isFinite(b.y)));
  assert.ok(scene.blocks.every(b=>b.image.endsWith('.png')));
+ assert.ok(scene.blocks.every(b=>Number.isFinite(b.spriteHeight) && b.spriteHeight>30));
+});
+
+test('watch UI smoke: scene starts, back pauses, menu and EXIT terminate',()=>{
+ const ux=readFileSync(new URL('../src/pages/index/index.ux',import.meta.url),'utf8');
+ const embedded=source.replace(/^export /gm,'');
+ assert.ok(ux.includes(embedded),'The installed inline Vela world engine must match tested source');
+ assert.ok(ux.includes('class="exit-mini" @click="exitGame"'),'EXIT must be accessible while playing');
+ const script=ux.match(/<script>([\\s\\S]*?)<\\/script>/)[1]
+   .replace(/^import storage.*$/gm,'')
+   .replace(/^import app.*$/gm,'')
+   .replace('export default','return');
+ let terminated=false;
+ let tick=null;
+ const page=Function('storage','app','console','setInterval','clearInterval',script)(
+   {get(){},set(){}},
+   {terminate(){terminated=true}},
+   {error(){},warn(){}},
+   fn=>{tick=fn;return 1},
+   ()=>{}
+ );
+ const vm={...page.private};
+ for(const key of Object.keys(page))if(typeof page[key]==='function')vm[key]=page[key].bind(vm);
+ vm.onInit();
+ assert.equal(vm.screen,'menu');
+ vm.startCreative();
+ assert.equal(vm.screen,'play');
+ assert.equal(vm.blocks.length,25);
+ tick();
+ vm.onBackPress();
+ assert.equal(vm.screen,'pause');
+ vm.resume();
+ assert.equal(vm.screen,'play');
+ vm.handleSwipe({direction:'right'});
+ assert.equal(vm.screen,'pause');
+ vm.toMenu();
+ assert.equal(vm.screen,'menu');
+ vm.exitGame();
+ assert.equal(terminated,true);
 });
