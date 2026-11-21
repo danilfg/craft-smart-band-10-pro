@@ -2,7 +2,6 @@
   "name": "pocket-craft-vela",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "Offline voxel survival sandbox for Xiaomi Smart Band 10 Pro Ceramic",
   "engines": {
     "node": ">=20"
